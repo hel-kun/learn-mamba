@@ -137,6 +137,7 @@ def test_save_checkpoint_writes_training_state(tmp_path: Path, small_config: Mam
         global_step=3,
         train_loss=1.5,
         eval_loss=2.5,
+        history=[{"step": 3, "train_loss": 1.5, "eval_loss": 2.5}],
     )
 
     checkpoint = torch.load(path, weights_only=False)
@@ -148,12 +149,14 @@ def test_save_checkpoint_writes_training_state(tmp_path: Path, small_config: Mam
         "global_step",
         "train_loss",
         "eval_loss",
+        "history",
     }
     assert checkpoint["config"] == small_config.to_dict()
     assert checkpoint["tokenizer_name"] == "tiny-tokenizer"
     assert checkpoint["global_step"] == 3
     assert checkpoint["train_loss"] == 1.5
     assert checkpoint["eval_loss"] == 2.5
+    assert checkpoint["history"] == [{"step": 3, "train_loss": 1.5, "eval_loss": 2.5}]
 
 
 def test_build_dataloaders_passes_hf_token(monkeypatch) -> None:

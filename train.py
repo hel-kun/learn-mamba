@@ -51,6 +51,7 @@ def save_checkpoint(
     global_step: int,
     train_loss: float,
     eval_loss: float | None,
+    history: list[dict[str, float | int | None]] | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
@@ -62,6 +63,7 @@ def save_checkpoint(
             "global_step": global_step,
             "train_loss": train_loss,
             "eval_loss": eval_loss,
+            "history": history if history is not None else [],
         },
         path,
     )
@@ -176,6 +178,7 @@ def main() -> None:
 
     global_step = 0
     last_loss = math.nan
+    history: list[dict[str, float | int | None]] = []
     while global_step < train_config.training.max_steps:
         for batch in train_loader:
             input_ids = batch["input_ids"].to(device)
@@ -199,6 +202,7 @@ def main() -> None:
             ):
                 eval_loss = evaluate(model, eval_loader, device, train_config.training.eval_batches)
                 eval_text = "n/a" if eval_loss is None else f"{eval_loss:.4f}"
+                history.append({"step": global_step, "train_loss": last_loss, "eval_loss": eval_loss})
                 print(f"step={global_step:04d} train_loss={last_loss:.4f} eval_loss={eval_text}")
                 save_checkpoint(
                     Path(train_config.output.checkpoint_path),
@@ -209,6 +213,7 @@ def main() -> None:
                     global_step,
                     last_loss,
                     eval_loss,
+                    history,
                 )
 
             if global_step >= train_config.training.max_steps:
