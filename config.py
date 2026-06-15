@@ -150,7 +150,7 @@ def _dataclass_from_dict(cls: type[T], values: dict[str, Any]) -> T:
                 raise ValueError(f"Config key {name!r} must be a mapping")
             kwargs[name] = _dataclass_from_dict(field_type, raw_value)
         else:
-            kwargs[name] = raw_value
+            kwargs[name] = _coerce_scalar(raw_value, field_type, name)
     return cls(**kwargs)
 
 
@@ -162,3 +162,27 @@ def _unwrap_optional(annotation: Any) -> Any:
     if type(None) in args and len(args) == 2:
         return next(arg for arg in args if arg is not type(None))
     return annotation
+
+
+def _coerce_scalar(value: Any, target_type: Any, field_name: str) -> Any:
+    if value is None:
+        return None
+    if target_type is float:
+        try:
+            return float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Config key {field_name!r} must be a float, got {value!r}") from exc
+    if target_type is int:
+        try:
+            return int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Config key {field_name!r} must be an int, got {value!r}") from exc
+    if target_type is bool:
+        if isinstance(value, bool):
+            return value
+        raise ValueError(f"Config key {field_name!r} must be a bool, got {value!r}")
+    if target_type is str:
+        if isinstance(value, str):
+            return value
+        raise ValueError(f"Config key {field_name!r} must be a string, got {value!r}")
+    return value

@@ -48,6 +48,51 @@ output:
     assert config.output.checkpoint_path == "checkpoints/tiny.pt"
 
 
+def test_train_config_accepts_scientific_notation_float_strings(tmp_path: Path) -> None:
+    config_path = tmp_path / "train.yaml"
+    config_path.write_text(
+        """
+training:
+  learning_rate: 1e-4
+  weight_decay: 1E-1
+""",
+    )
+
+    config = TrainConfig.from_yaml(config_path)
+
+    assert config.training.learning_rate == 1e-4
+    assert config.training.weight_decay == 1e-1
+    assert isinstance(config.training.learning_rate, float)
+
+
+def test_train_config_accepts_integer_strings(tmp_path: Path) -> None:
+    config_path = tmp_path / "train.yaml"
+    config_path.write_text(
+        """
+training:
+  max_steps: "100"
+""",
+    )
+
+    config = TrainConfig.from_yaml(config_path)
+
+    assert config.training.max_steps == 100
+    assert isinstance(config.training.max_steps, int)
+
+
+def test_train_config_rejects_invalid_float_strings(tmp_path: Path) -> None:
+    config_path = tmp_path / "train.yaml"
+    config_path.write_text(
+        """
+training:
+  learning_rate: not-a-number
+""",
+    )
+
+    with pytest.raises(ValueError, match="learning_rate"):
+        TrainConfig.from_yaml(config_path)
+
+
 def test_train_config_rejects_unknown_keys(tmp_path: Path) -> None:
     config_path = tmp_path / "train.yaml"
     config_path.write_text(
