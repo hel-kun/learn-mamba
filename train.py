@@ -1,10 +1,12 @@
 import argparse
 import math
+import os
 import random
 from pathlib import Path
 from typing import Any
 
 import torch
+from dotenv import load_dotenv
 from torch import Tensor
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
@@ -141,13 +143,23 @@ def resolve_device(device: str) -> torch.device:
     return torch.device(device)
 
 
+def get_hf_token(dotenv_path: str | Path = ".env") -> str | None:
+    load_dotenv(dotenv_path=dotenv_path)
+    token = os.getenv("HF_TOKEN")
+    if token is None:
+        return None
+    token = token.strip()
+    return token or None
+
+
 def main() -> None:
     args = parse_args()
     train_config = load_train_config(args)
     torch.manual_seed(train_config.runtime.seed)
     random.seed(train_config.runtime.seed)
+    hf_token = get_hf_token()
 
-    tokenizer = AutoTokenizer.from_pretrained(train_config.tokenizer.name)
+    tokenizer = AutoTokenizer.from_pretrained(train_config.tokenizer.name, token=hf_token)
     if tokenizer.pad_token is None and tokenizer.eos_token is not None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -160,7 +172,7 @@ def main() -> None:
         lr=train_config.training.learning_rate,
         weight_decay=train_config.training.weight_decay,
     )
-    train_loader, eval_loader = build_dataloaders(train_config, tokenizer)
+    train_loader, eval_loader = build_dataloaders(train_config, tokenizer, token=hf_token)
 
     global_step = 0
     last_loss = math.nan

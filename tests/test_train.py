@@ -1,10 +1,12 @@
 from pathlib import Path
 
 import torch
+from datasets import Dataset, DatasetDict
 from torch.utils.data import DataLoader
 
-from config import MambaLMConfig
-from dataset import TokenBlockDataset, collate_batch
+import dataset as dataset_module
+from config import MambaLMConfig, TrainConfig
+from dataset import TokenBlockDataset, build_dataloaders, collate_batch
 from models.embedding import TokenEmbedding
 from models.lm_head import LMHead
 from models.model import MambaLanguageModel
@@ -152,3 +154,25 @@ def test_save_checkpoint_writes_training_state(tmp_path: Path, small_config: Mam
     assert checkpoint["global_step"] == 3
     assert checkpoint["train_loss"] == 1.5
     assert checkpoint["eval_loss"] == 2.5
+
+
+def test_build_dataloaders_passes_hf_token(monkeypatch) -> None:
+    captured: dict[str, str | None] = {}
+
+    def fake_load_dataset(path: str, name: str | None = None, token: str | None = None) -> DatasetDict:
+        del path, name
+        captured["token"] = token
+        return DatasetDict(
+            {
+                "train": Dataset.from_dict({"story": ["abcdef"]}),
+                "test": Dataset.from_dict({"story": ["abcdef"]}),
+            }
+        )
+
+    monkeypatch.setattr(dataset_module, "load_dataset", fake_load_dataset)
+
+    train_loader, eval_loader = build_dataloaders(TrainConfig.default(), TinyTokenizer(), token="hf_test")
+
+    assert captured["token"] == "hf_test"
+    assert train_loader is not None
+    assert eval_loader is not None

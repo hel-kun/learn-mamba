@@ -67,8 +67,9 @@ def collate_batch(examples: list[dict[str, Tensor]]) -> dict[str, Tensor]:
 def build_dataloaders(
     config: TrainConfig,
     tokenizer: PreTrainedTokenizerBase,
+    token: str | None = None,
 ) -> tuple[DataLoader[dict[str, Tensor]], DataLoader[dict[str, Tensor]] | None]:
-    raw_dataset = load_dataset(config.dataset.name, config.dataset.config_name)
+    raw_dataset = load_dataset(config.dataset.name, config.dataset.config_name, token=token)
     if not isinstance(raw_dataset, DatasetDict):
         raise TypeError("Expected load_dataset to return a DatasetDict")
     if "train" not in raw_dataset:

@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from config import TrainConfig
-from train import load_train_config, resolve_device
+from train import get_hf_token, load_train_config, resolve_device
 
 
 def test_train_config_loads_nested_yaml(tmp_path: Path) -> None:
@@ -140,3 +140,15 @@ model:
 def test_resolve_device_accepts_auto_and_explicit_cpu() -> None:
     assert resolve_device("auto").type in {"cpu", "cuda"}
     assert resolve_device("cpu").type == "cpu"
+
+
+def test_get_hf_token_reads_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HF_TOKEN", "hf_test")
+
+    assert get_hf_token(dotenv_path=tmp_path / "missing.env") == "hf_test"
+
+
+def test_get_hf_token_returns_none_when_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+
+    assert get_hf_token(dotenv_path=tmp_path / "missing.env") is None
