@@ -27,7 +27,7 @@ def _compute_scan_factors(
     A: Tensor,
     B: Tensor,
     delta_bias: Tensor | None,
-    is_softplus: bool,
+    is_softplus: bool = False,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     delta_pre = delta + delta_bias.view(1, -1, 1) if delta_bias is not None else delta
     delta_eff = F.softplus(delta_pre) if is_softplus else delta_pre
@@ -68,7 +68,7 @@ def _selective_scan_forward(
     D: Tensor | None = None,
     z: Tensor|None = None,
     delta_bias: Tensor|None = None,
-    is_softplus: bool,
+    is_softplus: bool = False,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
     a, b, delta_pre, delta_eff = _compute_scan_factors(x, delta, A, B, delta_bias, is_softplus)
     h = _parallel_scan(a, b)

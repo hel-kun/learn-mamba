@@ -13,8 +13,10 @@ dependencies = [
     "matplotlib>=3.10.9",
     "mypy>=2.1.0",
     "python-dotenv>=1.2.2",
+    "pyyaml>=6.0.3",
     "torch>=2.11.0",
     "torchvision>=0.26.0",
+    "transformers>=4.57.0",
     "typing>=3.10.0.0",
 ]
 

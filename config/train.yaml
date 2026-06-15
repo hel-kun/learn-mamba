@@ -1,0 +1,36 @@
+dataset:
+  name: SimpleStories/SimpleStories-JA
+  config_name: null
+  text_column: story
+  max_train_samples: null
+  max_eval_samples: 1000
+
+tokenizer:
+  name: EleutherAI/gpt-neox-20b
+
+model:
+  d_model: 128
+  d_state: 16
+  d_conv: 4
+  dt_rank: null
+  num_layers: 4
+  dropout: 0.0
+  expand: 2
+  tie_embeddings: true
+  block_size: 256
+
+training:
+  batch_size: 8
+  max_steps: 10000
+  learning_rate: 1e-4
+  weight_decay: 0.1
+  grad_clip: 1.0
+  eval_interval: 5
+  eval_batches: 4
+
+runtime:
+  device: auto
+  seed: 0
+
+output:
+  checkpoint_path: checkpoints/mamba_lm.pt
