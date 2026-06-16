@@ -129,13 +129,14 @@ class Mamba(nn.Module):
         return out
 
     def step(self, h_states: Tensor, conv_state: Tensor, ssm_state: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        dtype = h_states.dtype
         x, z = self.in_proj(h_states).chunk(2, dim=-1)  # [B, d_inner] * 2
 
         # conv step (TODO: causal_conv1d_updateの実装によるconv処理の高速化)
         # example: [a, b, c] -> [b, c, a] -> [b, c, x]
-        conv_state = torch.cat([conv_state[:, :, 1:], x.unsqueeze(2)], dim=2)
-        conv_state[:, :, -1] = x
-        x = self.act(self.conv1d(conv_state)[:, :, -1])
+        conv_state = torch.cat([conv_state[:, :, 1:], x.unsqueeze(2)], dim=2)  # [B, D, W]
+        x = self.conv1d(conv_state)[:, :, -1]
+        x = self.act(x).to(dtype=dtype)  # [B, d_inner]
         x_db = self.x_proj(x)  # [B, dt_rank + d_state * 2]
         dt, B, C = torch.split(
             x_db, [self.dt_rank, self.d_state, self.d_state], dim=-1
@@ -146,10 +147,10 @@ class Mamba(nn.Module):
         # ssm step (TODO: selective_state_update実装によるSSM処理の高速化)
         dt = F.softplus(dt + self.dt_proj.bias.to(dtype=dt.dtype))
         dA = torch.exp(dt.unsqueeze(-1) * A.unsqueeze(0))  # [B, d_inner, d_state]
-        dB = dt.unsqueeze(-1) * B  # [B, d_inner, d_state]
-        ssm_state = dA * ssm_state.unsqueeze(1) + dB * x.unsqueeze(1)  # [B, d_inner, d_state]
-        y = (ssm_state * C).sum(dim=-1)  # [B, d_inner]
-        y = y + self.D * x  # [B, d_inner]
+        dB = dt.unsqueeze(-1) * B.unsqueeze(1)  # [B, d_inner, d_state]
+        ssm_state = dA * ssm_state + dB * x.unsqueeze(-1)  # [B, d_inner, d_state]
+        y = (ssm_state.to(dtype=dtype) * C.unsqueeze(1)).sum(dim=-1)  # [B, d_inner]
+        y = y + self.D.to(dtype=dtype) * x  # [B, d_inner]
         y = y * self.act(z)
 
         out = self.out_proj(y)  # [B, d_model]
