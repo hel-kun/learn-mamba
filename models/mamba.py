@@ -161,8 +161,7 @@ class Mamba(nn.Module):
         conv_state = torch.zeros(batch, self.d_inner, self.d_conv - 1, device=h_states.device, dtype=h_states.dtype)
         ssm_state = torch.zeros(batch, self.d_inner, self.d_state, device=h_states.device, dtype=h_states.dtype)
 
-        out = []
+        out = torch.empty(batch, seqlen, self.d_model, device=h_states.device, dtype=h_states.dtype)
         for t in range(seqlen):
-            out_t, conv_state, ssm_state = self.step(h_states[:, t, :], conv_state, ssm_state)
-            out.append(out_t)
-        return torch.stack(out, dim=1)
+            out[:, t, :], conv_state, ssm_state = self.step(h_states[:, t, :], conv_state, ssm_state)
+        return out
