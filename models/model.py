@@ -23,6 +23,9 @@ class MambaBlock(nn.Module):
     def forward(self, hidden_states: Tensor) -> Tensor:
         return hidden_states + self.dropout(self.mamba(self.norm(hidden_states)))
 
+    def infer(self, hidden_states: Tensor) -> Tensor:
+        return hidden_states + self.dropout(self.mamba.infer(self.norm(hidden_states)))
+
 
 class MambaLanguageModel(nn.Module):
     def __init__(self, config: MambaLMConfig) -> None:
@@ -47,3 +50,9 @@ class MambaLanguageModel(nn.Module):
 
         loss = F.cross_entropy(logits.contiguous().view(-1, logits.size(-1)), labels.contiguous().view(-1))
         return logits, loss
+
+    def infer(self, input_ids: Tensor) -> Tensor:
+        hidden_states = self.embedding(input_ids)
+        for layer in self.layers:
+            hidden_states = layer.infer(hidden_states)
+        return self.lm_head(self.norm(hidden_states))

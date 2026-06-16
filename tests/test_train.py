@@ -46,6 +46,19 @@ def test_mamba_language_model_forward_and_backward(small_config: MambaLMConfig) 
     loss.backward()
 
 
+def test_mamba_language_model_infer_matches_forward(small_config: MambaLMConfig) -> None:
+    torch.manual_seed(0)
+    model = MambaLanguageModel(small_config)
+    model.eval()
+    input_ids = torch.randint(0, small_config.vocab_size, (2, small_config.block_size))
+
+    with torch.no_grad():
+        forward_logits, _ = model(input_ids)
+        infer_logits = model.infer(input_ids)
+
+    torch.testing.assert_close(infer_logits, forward_logits, rtol=1e-5, atol=1e-6)
+
+
 def test_mamba_language_model_without_labels_returns_no_loss(small_config: MambaLMConfig) -> None:
     model = MambaLanguageModel(small_config)
     input_ids = torch.randint(0, small_config.vocab_size, (2, small_config.block_size))
