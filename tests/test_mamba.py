@@ -2,6 +2,7 @@ import math
 
 import pytest
 import torch
+from torch.testing import assert_close
 
 from models.mamba import Mamba
 
@@ -49,3 +50,37 @@ def test_mamba_backward_produces_finite_gradients() -> None:
 def test_mamba_rejects_invalid_dt_init() -> None:
     with pytest.raises(ValueError, match="Invalid dt_init"):
         Mamba(d_model=8, d_state=3, dt_init="bad")
+
+
+@pytest.mark.parametrize("d_conv", [2, 3, 4])
+def test_mamba_infer_matches_forward(d_conv: int) -> None:
+    torch.manual_seed(0)
+    model = Mamba(d_model=8, d_state=4, d_conv=d_conv)
+    model.eval()
+    hidden_states = torch.randn(2, 5, 8)
+
+    with torch.no_grad():
+        forward_out = model(hidden_states)
+        infer_out = model.infer(hidden_states)
+
+    assert infer_out.shape == forward_out.shape
+    assert_close(infer_out, forward_out, rtol=1e-5, atol=1e-6)
+
+
+def test_mamba_manual_step_loop_matches_infer() -> None:
+    torch.manual_seed(0)
+    model = Mamba(d_model=8, d_state=4, d_conv=3)
+    model.eval()
+    hidden_states = torch.randn(2, 5, 8)
+    conv_state = torch.zeros(2, model.d_inner, model.d_conv)
+    ssm_state = torch.zeros(2, model.d_inner, model.d_state)
+    outputs = []
+
+    with torch.no_grad():
+        for t in range(hidden_states.shape[1]):
+            out_t, conv_state, ssm_state = model.step(hidden_states[:, t], conv_state, ssm_state)
+            outputs.append(out_t)
+        manual_out = torch.stack(outputs, dim=1)
+        infer_out = model.infer(hidden_states)
+
+    assert_close(manual_out, infer_out, rtol=0, atol=0)
