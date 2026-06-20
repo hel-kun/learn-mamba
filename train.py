@@ -2,6 +2,7 @@ import argparse
 import math
 import os
 import random
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,18 @@ from transformers import AutoTokenizer
 from config import MambaLMConfig, TrainConfig
 from dataset import build_dataloaders
 from models.model import MambaLanguageModel
+
+
+@dataclass(slots=True)
+class CheckpointState:
+    model: MambaLanguageModel
+    optimizer: torch.optim.Optimizer
+    config: MambaLMConfig
+    tokenizer_name: str
+    global_step: int
+    train_loss: float
+    eval_loss: float | None
+    history: list[dict[str, float | int | None]]
 
 
 @torch.no_grad()
@@ -40,6 +53,46 @@ def evaluate(
     if not losses:
         return None
     return sum(losses) / len(losses)
+
+
+def load_checkpoint(
+    path: Path,
+    device: torch.device,
+    train_config: TrainConfig,
+) -> CheckpointState:
+    checkpoint = torch.load(path, map_location=device, weights_only=False)
+    required_keys = {"model", "optimizer", "config", "tokenizer_name", "global_step", "train_loss"}
+    missing_keys = sorted(required_keys - set(checkpoint))
+    if missing_keys:
+        raise KeyError(f"Checkpoint is missing required key(s): {', '.join(missing_keys)}")
+
+    config = MambaLMConfig.from_dict(checkpoint["config"])
+    model = MambaLanguageModel(config).to(device)
+    model.load_state_dict(checkpoint["model"])
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=train_config.training.learning_rate,
+        weight_decay=train_config.training.weight_decay,
+    )
+    optimizer.load_state_dict(checkpoint["optimizer"])
+
+    for state in optimizer.state.values():
+        for key, value in state.items():
+            if torch.is_tensor(value):
+                state[key] = value.to(device)
+
+    eval_loss = checkpoint.get("eval_loss")
+    history = checkpoint.get("history", [])
+    return CheckpointState(
+        model,
+        optimizer,
+        config,
+        str(checkpoint["tokenizer_name"]),
+        int(checkpoint["global_step"]),
+        float(checkpoint["train_loss"]),
+        None if eval_loss is None else float(eval_loss),
+        history if isinstance(history, list) else [],
+    )
 
 
 def save_checkpoint(
@@ -77,6 +130,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--text-column", default=None)
     parser.add_argument("--tokenizer-name", default=None)
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument("--resume", type=Path, default=None)
     parser.add_argument("--device", default=None)
     parser.add_argument("--seed", type=int, default=None)
 
@@ -160,25 +214,42 @@ def main() -> None:
     torch.manual_seed(train_config.runtime.seed)
     random.seed(train_config.runtime.seed)
     hf_token = get_hf_token()
-
-    tokenizer = AutoTokenizer.from_pretrained(train_config.tokenizer.name, token=hf_token)
-    if tokenizer.pad_token is None and tokenizer.eos_token is not None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    config = train_config.to_mamba_lm_config(vocab_size=len(tokenizer))
-
     device = resolve_device(train_config.runtime.device)
-    model = MambaLanguageModel(config).to(device)
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=train_config.training.learning_rate,
-        weight_decay=train_config.training.weight_decay,
-    )
+
+    if args.resume is not None:
+        checkpoint_state = load_checkpoint(args.resume, device, train_config)
+        config = checkpoint_state.config
+        model = checkpoint_state.model
+        optimizer = checkpoint_state.optimizer
+        tokenizer_name = checkpoint_state.tokenizer_name
+        global_step = checkpoint_state.global_step
+        last_loss = checkpoint_state.train_loss
+        history = checkpoint_state.history
+        train_config = train_config.with_overrides({"model.block_size": config.block_size})
+    else:
+        tokenizer_name = train_config.tokenizer.name
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, token=hf_token)
+        if tokenizer.pad_token is None and tokenizer.eos_token is not None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        config = train_config.to_mamba_lm_config(vocab_size=len(tokenizer))
+        model = MambaLanguageModel(config).to(device)
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=train_config.training.learning_rate,
+            weight_decay=train_config.training.weight_decay,
+        )
+        global_step = 0
+        last_loss = math.nan
+        history: list[dict[str, float | int | None]] = []
+
+    if args.resume is not None:
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, token=hf_token)
+        if tokenizer.pad_token is None and tokenizer.eos_token is not None:
+            tokenizer.pad_token = tokenizer.eos_token
+
     train_loader, eval_loader = build_dataloaders(train_config, tokenizer, token=hf_token)
 
-    global_step = 0
-    last_loss = math.nan
-    history: list[dict[str, float | int | None]] = []
     while global_step < train_config.training.max_steps:
         for batch in train_loader:
             input_ids = batch["input_ids"].to(device)
@@ -209,7 +280,7 @@ def main() -> None:
                     model,
                     optimizer,
                     config,
-                    train_config.tokenizer.name,
+                    tokenizer_name,
                     global_step,
                     last_loss,
                     eval_loss,

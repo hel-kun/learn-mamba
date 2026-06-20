@@ -11,7 +11,7 @@ from models.embedding import TokenEmbedding
 from models.lm_head import LMHead
 from models.model import MambaLanguageModel
 from tests.conftest import TinyDataset, TinyTokenizer
-from train import evaluate, save_checkpoint
+from train import evaluate, load_checkpoint, save_checkpoint
 
 
 def test_token_embedding_shape() -> None:
@@ -170,6 +170,66 @@ def test_save_checkpoint_writes_training_state(tmp_path: Path, small_config: Mam
     assert checkpoint["train_loss"] == 1.5
     assert checkpoint["eval_loss"] == 2.5
     assert checkpoint["history"] == [{"step": 3, "train_loss": 1.5, "eval_loss": 2.5}]
+
+
+def test_load_checkpoint_restores_training_state(tmp_path: Path, small_config: MambaLMConfig) -> None:
+    torch.manual_seed(0)
+    model = MambaLanguageModel(small_config)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.2)
+    input_ids = torch.randint(0, small_config.vocab_size, (2, small_config.block_size))
+    labels = torch.randint(0, small_config.vocab_size, (2, small_config.block_size))
+    _, loss = model(input_ids, labels=labels)
+    assert loss is not None
+    loss.backward()
+    optimizer.step()
+    path = tmp_path / "checkpoint.pt"
+    history = [{"step": 7, "train_loss": 1.25, "eval_loss": 1.75}]
+
+    save_checkpoint(
+        path,
+        model,
+        optimizer,
+        small_config,
+        tokenizer_name="tiny-tokenizer",
+        global_step=7,
+        train_loss=1.25,
+        eval_loss=1.75,
+        history=history,
+    )
+
+    state = load_checkpoint(path, torch.device("cpu"), TrainConfig.default())
+
+    assert state.config == small_config
+    assert state.tokenizer_name == "tiny-tokenizer"
+    assert state.global_step == 7
+    assert state.train_loss == 1.25
+    assert state.eval_loss == 1.75
+    assert state.history == history
+    for key, value in model.state_dict().items():
+        torch.testing.assert_close(state.model.state_dict()[key], value)
+    assert state.optimizer.state_dict()["state"]
+
+
+def test_load_checkpoint_defaults_missing_optional_state(tmp_path: Path, small_config: MambaLMConfig) -> None:
+    model = MambaLanguageModel(small_config)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    path = tmp_path / "legacy_checkpoint.pt"
+    torch.save(
+        {
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "config": small_config.to_dict(),
+            "tokenizer_name": "tiny-tokenizer",
+            "global_step": 1,
+            "train_loss": 2.0,
+        },
+        path,
+    )
+
+    state = load_checkpoint(path, torch.device("cpu"), TrainConfig.default())
+
+    assert state.eval_loss is None
+    assert state.history == []
 
 
 def test_build_dataloaders_passes_hf_token(monkeypatch) -> None:
