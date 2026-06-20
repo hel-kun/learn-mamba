@@ -9,28 +9,28 @@ tokenizer:
   name: EleutherAI/gpt-neox-20b
 
 model:
-  d_model: 128
+  d_model: 256
   d_state: 16
   d_conv: 4
   dt_rank: null
-  num_layers: 4
-  dropout: 0.0
+  num_layers: 8
+  dropout: 0.1
   expand: 2
   tie_embeddings: true
-  block_size: 512
+  block_size: 1024
 
 training:
-  batch_size: 16
+  batch_size: 32
   max_steps: 50000
   learning_rate: 1e-4
   weight_decay: 0.1
   grad_clip: 1.0
-  eval_interval: 5
+  eval_interval: 100
   eval_batches: 4
 
 runtime:
-  device: "cuda:0"
+  device: "cuda:3"
   seed: 0
 
 output:
-  checkpoint_path: checkpoints/mamba_lm.pt
+  checkpoint_path: checkpoints/mid/mamba_lm2.pt

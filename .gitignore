@@ -21,3 +21,6 @@ wheels/
 # env files
 .env
 .env.*
+
+# checkpoints
+checkpoints/
